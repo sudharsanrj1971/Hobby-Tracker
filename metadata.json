@@ -1,0 +1,6 @@
+{
+  "name": "Hobby Tracker",
+  "description": "Turn Your Passions Into Lifelong Habits. A comprehensive hobby and habit tracker featuring custom visual analytics, heatmaps, and a Gemini-powered AI coach.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

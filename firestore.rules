@@ -1,0 +1,120 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() <= 100;
+    }
+
+    function isValidHobby(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.category is string && data.category.size() <= 100
+        && data.streak is int && data.streak >= 0;
+    }
+
+    function isValidLog(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.duration is number && data.duration >= 0;
+    }
+
+    function isValidAchievement(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 100
+        && data.unlocked is bool;
+    }
+
+    function isValidReminder(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.type is string && data.type.size() <= 50
+        && data.time is string && data.time.size() <= 10
+        && data.enabled is bool;
+    }
+
+    function isValidReport(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.insights is string && data.insights.size() <= 5000;
+    }
+
+    function isValidChatMessage(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.sender is string && (data.sender == 'user' || data.sender == 'coach')
+        && data.text is string && data.text.size() <= 5000;
+    }
+
+    // Collection: Users
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      // Subcollection: Hobbies
+      match /hobbies/{hobbyId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHobby(request.resource.data);
+        allow update: if isOwner(userId) && isValidHobby(request.resource.data);
+        allow delete: if isOwner(userId);
+
+        // Subcollection: Logs
+        match /logs/{logId} {
+          allow get, list: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidLog(request.resource.data);
+          allow update: if isOwner(userId) && isValidLog(request.resource.data);
+          allow delete: if isOwner(userId);
+        }
+      }
+
+      // Subcollection: Achievements
+      match /achievements/{achievementId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAchievement(request.resource.data);
+        allow update: if isOwner(userId) && isValidAchievement(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Subcollection: Reminders
+      match /reminders/{reminderId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidReminder(request.resource.data);
+        allow update: if isOwner(userId) && isValidReminder(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Subcollection: AI Reports
+      match /ai_reports/{reportId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidReport(request.resource.data);
+        allow update: if isOwner(userId) && isValidReport(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Subcollection: Chat Messages
+      match /chat_messages/{messageId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChatMessage(request.resource.data);
+        allow update: if isOwner(userId) && isValidChatMessage(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "email": { "type": "string", "description": "Email address" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "lastLogin": { "type": "string", "format": "date-time", "description": "Last login timestamp" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
+        "isDarkMode": { "type": "boolean", "description": "True if dark theme is selected" },
+        "privacySettings": { "type": "object", "description": "Custom user notification and AI preferences" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "Hobby": {
+      "title": "Hobby",
+      "description": "Tracked hobby configured by user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique hobby ID" },
+        "userId": { "type": "string", "description": "Owner of the hobby" },
+        "name": { "type": "string", "description": "Name of the hobby" },
+        "category": { "type": "string", "description": "Hobby category name" },
+        "emoji": { "type": "string", "description": "Selected emoji representing the hobby" },
+        "coverImage": { "type": "string", "description": "Unsplash or upload cover image URL" },
+        "dailyGoal": { "type": "number", "description": "Daily goal in hours" },
+        "weeklyGoal": { "type": "number", "description": "Weekly goal in hours" },
+        "streak": { "type": "number", "description": "Current active streak" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedToday": { "type": "boolean" },
+        "totalXp": { "type": "number" },
+        "description": { "type": "string" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "themeColor": { "type": "string" },
+        "archived": { "type": "boolean" },
+        "reminders": { "type": "array", "description": "Custom configured reminder channels and timings" },
+        "logs": { "type": "array", "description": "Inlined logs for small payloads" }
+      },
+      "required": ["id", "userId", "name", "category", "streak", "createdAt"]
+    },
+    "HobbyLog": {
+      "title": "HobbyLog",
+      "description": "Individual effort logs for a hobby",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "hobbyId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "duration": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "userId", "hobbyId", "timestamp", "duration"]
+    },
+    "Achievement": {
+      "title": "Achievement",
+      "description": "Unlocked XP and trophy badges",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "unlocked": { "type": "boolean" },
+        "unlockedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "unlocked"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Smart notifications queue",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "hobbyId": { "type": "string" },
+        "hobbyName": { "type": "string" },
+        "type": { "type": "string" },
+        "time": { "type": "string" },
+        "timing": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "lastTriggered": { "type": "string" }
+      },
+      "required": ["id", "userId", "hobbyId", "type", "time", "enabled"]
+    },
+    "AIReport": {
+      "title": "AIReport",
+      "description": "Generated Coach analysis",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "insights": { "type": "string" },
+        "recommendations": { "type": "array" }
+      },
+      "required": ["id", "userId", "generatedAt", "insights"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Chat log with Gemini coach",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "coach"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "sender", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User account documents containing customization flags"
+    },
+    "users/{userId}/hobbies/{hobbyId}": {
+      "schema": { "$ref": "#/entities/Hobby" },
+      "description": "Individual custom tracked hobbies per user"
+    },
+    "users/{userId}/hobbies/{hobbyId}/logs/{logId}": {
+      "schema": { "$ref": "#/entities/HobbyLog" },
+      "description": "Hobby duration tracking log records"
+    },
+    "users/{userId}/achievements/{achievementId}": {
+      "schema": { "$ref": "#/entities/Achievement" },
+      "description": "Badges and goals unlocked by user"
+    },
+    "users/{userId}/reminders/{reminderId}": {
+      "schema": { "$ref": "#/entities/Reminder" },
+      "description": "Interactive push and Twilio webhook reminder configurations"
+    },
+    "users/{userId}/ai_reports/{reportId}": {
+      "schema": { "$ref": "#/entities/AIReport" },
+      "description": "Cached Gemini intelligence reports for analytics page"
+    },
+    "users/{userId}/chat_messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "AI Coach dialogue records for persistence across sessions"
+    }
+  }
+}
