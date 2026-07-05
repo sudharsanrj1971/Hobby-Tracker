@@ -3,6 +3,8 @@ export interface HobbyLog {
   timestamp: string; // ISO string
   duration: number; // in minutes
   notes: string;
+  flowState?: boolean; // Did they achieve deep focus/flow?
+  energyDelta?: number; // -2 to +2 (Drained vs Energized)
 }
 
 export interface ReminderSetting {
@@ -59,4 +61,42 @@ export interface PrivacySettings {
   hobbyAiAssistant: boolean;
   autoCategorization: boolean;
   insightsEngine: boolean;
+}
+
+export interface SocialLinks {
+  github?: string;
+  linkedin?: string;
+  twitter?: string;
+  instagram?: string;
+  website?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  username: string;
+  displayName: string;
+  email: string;
+  phone?: string;
+  bio?: string;
+  profileImage?: string;
+  coverImage?: string;
+  dateOfBirth?: string;
+  location?: string;
+  occupation?: string;
+  country?: string;
+  language?: string;
+  gender?: 'male' | 'female' | 'non-binary' | 'prefer-not-to-say';
+  socialLinks: SocialLinks;
+  xp: number;
+  level: number;
+  achievementsCount: number;
+  currentTheme: 'light' | 'dark' | 'system';
+  notificationPreferences: {
+    push: boolean;
+    sms: boolean;
+    whatsapp: boolean;
+    email: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
 }

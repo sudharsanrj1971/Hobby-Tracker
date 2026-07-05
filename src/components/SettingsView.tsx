@@ -110,7 +110,7 @@ export default function SettingsView({ settings, isDarkMode = false, onToggleSet
         {/* Column 2: Integrations */}
         <div className="space-y-4">
           <h3 className="text-lg font-display font-bold px-1 text-purple-400">
-            AI Integrations
+            AI Integrations & Data
           </h3>
           
           <div className={`rounded-3xl p-6 space-y-6 border ${
@@ -186,6 +186,59 @@ export default function SettingsView({ settings, isDarkMode = false, onToggleSet
                 <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
                   settings.insightsEngine ? 'translate-x-6' : 'translate-x-0'
                 }`} />
+              </button>
+            </div>
+
+            {/* Export Data */}
+            <div className="flex items-center justify-between gap-4 border-t border-purple-500/10 pt-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                  <Cpu className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm">Export Data (JSON)</h4>
+                  <p className="text-xs text-gray-400 leading-snug">Download all your logs and habits</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(localStorage));
+                  const downloadAnchorNode = document.createElement('a');
+                  downloadAnchorNode.setAttribute("href", dataStr);
+                  downloadAnchorNode.setAttribute("download", "hobbysync_data.json");
+                  document.body.appendChild(downloadAnchorNode);
+                  downloadAnchorNode.click();
+                  downloadAnchorNode.remove();
+                }}
+                className="py-1.5 px-3 rounded-lg text-xs font-bold bg-purple-500/20 hover:bg-purple-500/30 text-purple-600 dark:text-purple-300 transition-colors cursor-pointer"
+              >
+                Export
+              </button>
+            </div>
+
+            {/* Clear Data */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-red-500 dark:text-red-400">Danger Zone</h4>
+                  <p className="text-xs text-gray-400 leading-snug">Erase all local app data</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+                    localStorage.clear();
+                    window.location.reload();
+                  }
+                }}
+                className="py-1.5 px-3 rounded-lg text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 transition-colors cursor-pointer"
+              >
+                Reset
               </button>
             </div>
 

@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Phone, ArrowRight, Lock, User, Sparkles, MessageSquareCode, ShieldCheck, Moon, Sun, AlertCircle } from 'lucide-react';
 import { auth, db } from '../firebase';
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { 
+  signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, sendPasswordResetEmail 
+} from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
 interface LoginProps {
@@ -12,12 +15,12 @@ interface LoginProps {
 
 export default function LoginView({ onLogin, isDarkMode = false }: LoginProps) {
   const [authMethod, setAuthMethod] = useState<'options' | 'email' | 'phone_number' | 'phone_otp'>('options');
-  const [userNameInput, setUserNameInput] = useState('sudharsan');
-  const [emailInput, setEmailInput] = useState('sudharsanrj1971@gmail.com');
-  const [passwordInput, setPasswordInput] = useState('password123');
+  const [userNameInput, setUserNameInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   
   // Phone auth inputs
-  const [phoneNumber, setPhoneNumber] = useState('+1 (555) 019-2834');
+  const [phoneNumber, setPhoneNumber] = useState('+91 ');
   const [otpCode, setOtpCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpTimer, setOtpTimer] = useState(60);
@@ -36,17 +39,6 @@ export default function LoginView({ onLogin, isDarkMode = false }: LoginProps) {
         const provider = new GoogleAuthProvider();
         const result = await signInWithPopup(auth, provider);
         const displayName = result.user.displayName || 'Google User';
-        
-        // Save user to Firestore database
-        if (db) {
-          await setDoc(doc(db, 'users', result.user.uid), {
-            uid: result.user.uid,
-            displayName,
-            email: result.user.email,
-            photoURL: result.user.photoURL,
-            lastLogin: new Date().toISOString()
-          }, { merge: true });
-        }
         
         onLogin(displayName, result.user.email || '');
       } else {
@@ -84,73 +76,141 @@ export default function LoginView({ onLogin, isDarkMode = false }: LoginProps) {
         const user = userCredential.user;
         const displayName = userNameInput || user.email?.split('@')[0] || 'Member';
         
-        // Save profile in Firestore
-        if (db) {
-          await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            displayName,
-            email: user.email,
-            lastLogin: new Date().toISOString()
-          }, { merge: true });
-        }
-        
         onLogin(displayName, user.email || '');
       } else {
-        // Fallback
+        // Fallback for local dev without Firebase
         setTimeout(() => {
           onLogin(userNameInput, emailInput);
         }, 1000);
       }
     } catch (e: any) {
       console.error("Email auth error:", e);
-      setErrorMessage(e.message || "Authentication failed. Try a different password.");
       
-      // Let user enter anyway with mock if Firebase has temporary connectivity issues
-      setTimeout(() => {
-        setErrorMessage("Notice: Connected in Local Offline Sandbox Mode.");
+      let friendlyMessage = "Authentication failed. Please try again.";
+      
+      if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+        friendlyMessage = isRegistering 
+          ? "Account already exists or invalid details. Try signing in instead."
+          : "Invalid email or password. Please check your credentials or register.";
+      } else if (e.code === 'auth/email-already-in-use') {
+        friendlyMessage = "This email is already registered. Please sign in instead.";
+      } else if (e.code === 'auth/weak-password') {
+        friendlyMessage = "Password is too weak. Please use at least 6 characters.";
+      } else if (e.code === 'auth/invalid-email') {
+        friendlyMessage = "Please enter a valid email address.";
+      } else if (e.code === 'auth/too-many-requests') {
+        friendlyMessage = "Too many failed attempts. Please try again later or reset your password.";
+      }
+
+      setErrorMessage(friendlyMessage);
+      
+      // ONLY fallback if it's NOT a credential error (e.g. network/config issues)
+      const isCredentialError = [
+        'auth/invalid-credential', 
+        'auth/wrong-password', 
+        'auth/user-not-found', 
+        'auth/email-already-in-use',
+        'auth/weak-password',
+        'auth/invalid-email'
+      ].includes(e.code);
+
+      if (!isCredentialError) {
         setTimeout(() => {
-          onLogin(userNameInput, emailInput);
-        }, 1200);
-      }, 1000);
+          setErrorMessage("Network issue detected. Using local sync mode...");
+          setTimeout(() => {
+            onLogin(userNameInput, emailInput);
+          }, 1500);
+        }, 1500);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   // Trigger Phone OTP request
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!phoneNumber.trim()) return;
     setIsLoading(true);
     setErrorMessage('');
 
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAuthMethod('phone_otp');
+        setOtpSent(true);
+        setOtpTimer(60);
+        if (data.demoMode) {
+          setErrorMessage(`Demo Mode: Use code ${data.otp}`);
+          setOtpCode(data.otp);
+        } else {
+          setErrorMessage('Verification code sent to your phone!');
+        }
+      } else {
+        setErrorMessage(data.error || 'Failed to send OTP.');
+      }
+    } catch (err) {
+      setErrorMessage('Network error. Please try again.');
+    } finally {
       setIsLoading(false);
-      setAuthMethod('phone_otp');
-      setOtpSent(true);
-      // Start fake count down
-      const timer = setInterval(() => {
-        setOtpTimer((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }, 1200);
+    }
   };
 
   // Verify Phone OTP
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otpCode.trim()) return;
     setIsLoading(true);
-    
-    setTimeout(() => {
+    setErrorMessage('');
+
+    try {
+      const response = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber, code: otpCode })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        onLogin(data.user.displayName, data.user.email);
+      } else {
+        setErrorMessage(data.error || 'Invalid verification code.');
+      }
+    } catch (err) {
+      setErrorMessage('Verification failed. Please try again.');
+    } finally {
       setIsLoading(false);
-      onLogin(userNameInput || 'SMS Member', 'sms-user@hobbysync.com');
-    }, 1200);
+    }
+  };
+
+  // Handle Password Reset
+  const handleForgotPassword = async () => {
+    if (!emailInput) {
+      setErrorMessage("Please enter your email address first.");
+      return;
+    }
+    setIsLoading(true);
+    setErrorMessage("");
+    try {
+      if (auth) {
+        await sendPasswordResetEmail(auth, emailInput);
+        setErrorMessage("Password reset link sent! Please check your inbox.");
+      } else {
+        setErrorMessage("Notice: Connected in Local Offline Sandbox Mode.");
+      }
+    } catch (e: any) {
+      setErrorMessage(e.message || "Failed to send reset email.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -360,16 +420,28 @@ export default function LoginView({ onLogin, isDarkMode = false }: LoginProps) {
               </button>
 
               {/* Register switch */}
-              <button 
-                type="button" 
-                onClick={() => {
-                  setIsRegistering(!isRegistering);
-                  setErrorMessage('');
-                }}
-                className="mt-4 text-xs text-purple-400 hover:underline mx-auto font-medium cursor-pointer"
-              >
-                {isRegistering ? 'Already have an account? Sign In' : "Don't have an account? Register Now"}
-              </button>
+              <div className="flex flex-col items-center gap-2 mt-4">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setIsRegistering(!isRegistering);
+                    setErrorMessage('');
+                  }}
+                  className="text-xs text-purple-400 hover:underline font-medium cursor-pointer"
+                >
+                  {isRegistering ? 'Already have an account? Sign In' : "Don't have an account? Register Now"}
+                </button>
+                
+                {!isRegistering && (
+                  <button 
+                    type="button" 
+                    onClick={handleForgotPassword}
+                    className="text-[10px] text-gray-500 hover:text-purple-400 cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
 
               {/* Back button */}
               <button 
@@ -409,8 +481,15 @@ export default function LoginView({ onLogin, isDarkMode = false }: LoginProps) {
                     <input 
                       type="tel" 
                       value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="+1 (555) 019-2834"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.startsWith('+91 ')) {
+                          setPhoneNumber(val);
+                        } else if (val.length < 4) {
+                          setPhoneNumber('+91 ');
+                        }
+                      }}
+                      placeholder="+91 98765 43210"
                       required
                       className={`w-full py-3 pl-10 pr-4 rounded-xl border focus:outline-hidden focus:ring-2 focus:ring-purple-500 text-sm transition-all ${
                         isDarkMode 
@@ -468,7 +547,7 @@ export default function LoginView({ onLogin, isDarkMode = false }: LoginProps) {
                     maxLength={6}
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value)}
-                    placeholder="Enter 123456"
+                    placeholder="_ _ _ _ _ _"
                     required
                     className={`w-full py-3 px-4 rounded-xl border text-center tracking-[0.5em] text-lg font-mono focus:outline-hidden focus:ring-2 focus:ring-purple-400 transition-all ${
                       isDarkMode 

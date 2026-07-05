@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Sparkles, Smile, MessageSquare, ArrowRight, Brain } from 'lucide-react';
-import { ChatMessage } from '../types';
+import { Send, Sparkles, Smile, MessageSquare, ArrowRight, Brain, User } from 'lucide-react';
+import { ChatMessage, UserProfile } from '../types';
 
 interface CoachChatProps {
   chatHistory: ChatMessage[];
   isDarkMode?: boolean;
   onSendMessage: (text: string) => Promise<void>;
   isCoachTyping: boolean;
+  userProfile?: UserProfile | null;
 }
 
-export default function CoachChatView({ chatHistory, isDarkMode = false, onSendMessage, isCoachTyping }: CoachChatProps) {
+export default function CoachChatView({ chatHistory, isDarkMode = false, onSendMessage, isCoachTyping, userProfile }: CoachChatProps) {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -67,13 +68,28 @@ export default function CoachChatView({ chatHistory, isDarkMode = false, onSendM
                   initial={{ opacity: 0, y: 10, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ duration: 0.2 }}
-                  className={`flex ${isCoach ? 'justify-start' : 'justify-end'}`}
+                  className={`flex items-end gap-2.5 ${isCoach ? 'justify-start' : 'justify-end flex-row-reverse'}`}
                 >
+                  {/* Avatar section */}
+                  <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border ${
+                    isCoach 
+                      ? 'bg-purple-600 border-purple-500' 
+                      : isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-200 border-gray-300'
+                  }`}>
+                    {isCoach ? (
+                      <Brain className="w-4 h-4 text-white" />
+                    ) : userProfile?.profileImage ? (
+                      <img src={userProfile.profileImage} alt="User" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <User className="w-4 h-4 text-gray-500" />
+                    )}
+                  </div>
+
                   <div
                     className={`max-w-[80%] rounded-2xl p-4 text-xs leading-relaxed ${
                       isCoach
                         ? isDarkMode 
-                          ? 'bg-purple-950/45 border border-purple-900 text-purple-200 rounded-tl-none font-sans'
+                          ? 'bg-purple-950/45 border border-purple-900 text-purple-200 rounded-bl-none font-sans'
                           : 'bg-purple-100/80 border border-purple-200/50 text-purple-950 rounded-tl-none font-sans'
                         : isDarkMode
                           ? 'bg-slate-900 border border-purple-900/40 text-slate-100 rounded-tr-none'

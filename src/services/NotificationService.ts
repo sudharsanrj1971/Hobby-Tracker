@@ -65,10 +65,12 @@ export class NotificationService {
    */
   public async sendSMS(payload: NotificationPayload): Promise<DeliveryReceipt> {
     const { to, body } = payload;
+    // Sanitize phone number (remove spaces/dashes) for E.164 compliance
+    const sanitizedTo = to.replace(/\s+/g, '');
     const timestamp = new Date().toISOString();
 
     if (!this.isTwilioConfigured()) {
-      return this.simulateSMS(to, body, timestamp);
+      return this.simulateSMS(sanitizedTo, body, timestamp);
     }
 
     try {
@@ -80,7 +82,7 @@ export class NotificationService {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: new URLSearchParams({
-          To: to,
+          To: sanitizedTo,
           From: this.fromNumber,
           Body: body
         })
@@ -91,23 +93,23 @@ export class NotificationService {
         throw new Error(data.message || 'Failed to dispatch via Twilio API');
       }
 
-      console.log(`[NotificationService] SMS successfully dispatched via Twilio to ${to}. Message SID: ${data.sid}`);
+      console.log(`[NotificationService] SMS successfully dispatched via Twilio to ${sanitizedTo}. Message SID: ${data.sid}`);
       return {
         success: true,
         simulated: false,
         channel: 'SMS',
-        to,
+        to: sanitizedTo,
         body,
         messageSid: data.sid,
         timestamp
       };
     } catch (error: any) {
-      console.error(`[NotificationService] Twilio SMS API Error sending to ${to}:`, error);
+      console.error(`[NotificationService] Twilio SMS API Error sending to ${sanitizedTo}:`, error);
       return {
         success: false,
         simulated: false,
         channel: 'SMS',
-        to,
+        to: sanitizedTo,
         body,
         timestamp,
         error: error.message || 'Twilio delivery failed'
@@ -121,16 +123,18 @@ export class NotificationService {
    */
   public async sendWhatsApp(payload: NotificationPayload): Promise<DeliveryReceipt> {
     const { to, body, userName, hobbyName, streak } = payload;
+    // Sanitize phone number (remove spaces/dashes) for WhatsApp E.164 compliance
+    const sanitizedTo = to.replace(/\s+/g, '');
     const timestamp = new Date().toISOString();
 
     // Standardize WhatsApp template style message body if none is supplied
     const whatsappBody = body || `🔥 Hobby Sync Reminder\n\nHi ${userName || 'Hobbyist'}!\n\nIt's time for your ${hobbyName || 'hobby'} session. Keep your ${streak || 0}-day streak alive! 🚀`;
 
     if (!this.isTwilioConfigured()) {
-      return this.simulateWhatsApp(to, whatsappBody, timestamp);
+      return this.simulateWhatsApp(sanitizedTo, whatsappBody, timestamp);
     }
 
-    const formattedTo = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+    const formattedTo = sanitizedTo.startsWith('whatsapp:') ? sanitizedTo : `whatsapp:${sanitizedTo}`;
     const formattedFrom = this.whatsappFrom.startsWith('whatsapp:') ? this.whatsappFrom : `whatsapp:${this.whatsappFrom}`;
 
     try {
@@ -153,23 +157,23 @@ export class NotificationService {
         throw new Error(data.message || 'Failed to dispatch WhatsApp via Twilio API');
       }
 
-      console.log(`[NotificationService] WhatsApp successfully dispatched via Twilio to ${to}. Message SID: ${data.sid}`);
+      console.log(`[NotificationService] WhatsApp successfully dispatched via Twilio to ${sanitizedTo}. Message SID: ${data.sid}`);
       return {
         success: true,
         simulated: false,
         channel: 'WhatsApp',
-        to,
+        to: sanitizedTo,
         body: whatsappBody,
         messageSid: data.sid,
         timestamp
       };
     } catch (error: any) {
-      console.error(`[NotificationService] Twilio WhatsApp API Error sending to ${to}:`, error);
+      console.error(`[NotificationService] Twilio WhatsApp API Error sending to ${sanitizedTo}:`, error);
       return {
         success: false,
         simulated: false,
         channel: 'WhatsApp',
-        to,
+        to: sanitizedTo,
         body: whatsappBody,
         timestamp,
         error: error.message || 'Twilio WhatsApp delivery failed'

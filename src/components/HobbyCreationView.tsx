@@ -455,7 +455,7 @@ export default function HobbyCreationView({ onCreateHobby, isDarkMode = false }:
             </div>
 
             <p className="text-xs text-gray-400 leading-relaxed">
-              Enable push or cellular notifications powered by the Twilio WhatsApp and SMS integrations.
+              Enable push or cellular notifications for your daily hobby tracking.
             </p>
 
             <div className="space-y-3">

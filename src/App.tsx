@@ -1,30 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Joyride, Step, EventData, STATUS } from 'react-joyride';
 import { 
   Home, Plus, Calendar, BarChart2, MessageSquare, Award, Settings, 
-  Search, Bell, User, LogOut, ShieldAlert, Sparkles, Sun, Moon, Menu, X
+  Search, Bell, User, LogOut, ShieldAlert, Sparkles, Sun, Moon, Menu, X, Loader2
 } from 'lucide-react';
 
-import { Hobby, Achievement, ChatMessage, PrivacySettings } from './types';
+import { Hobby, Achievement, ChatMessage, PrivacySettings, UserProfile } from './types';
 import { INITIAL_HOBBIES, INITIAL_ACHIEVEMENTS } from './data';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, deleteDoc, onSnapshot } from 'firebase/firestore';
 
-// Component imports
-import SplashView from './components/SplashView';
-import OnboardingView from './components/OnboardingView';
-import LoginView from './components/LoginView';
-import DashboardView from './components/DashboardView';
-import HobbyCreationView from './components/HobbyCreationView';
-import HeatmapsView from './components/HeatmapsView';
-import AnalyticsView from './components/AnalyticsView';
-import CoachChatView from './components/CoachChatView';
-import AchievementsView from './components/AchievementsView';
-import SettingsView from './components/SettingsView';
+// Lazy loaded component imports
+const SplashView = lazy(() => import('./components/SplashView'));
+const OnboardingView = lazy(() => import('./components/OnboardingView'));
+const LoginView = lazy(() => import('./components/LoginView'));
+const DashboardView = lazy(() => import('./components/DashboardView'));
+const MyHobbiesView = lazy(() => import('./components/MyHobbiesView'));
+const HeatmapsView = lazy(() => import('./components/HeatmapsView'));
+const AnalyticsView = lazy(() => import('./components/AnalyticsView'));
+const CoachChatView = lazy(() => import('./components/CoachChatView'));
+const AchievementsView = lazy(() => import('./components/AchievementsView'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const NavBar = lazy(() => import('./components/NavBar'));
+const RemindersView = lazy(() => import('./components/RemindersView'));
+const CommunityView = lazy(() => import('./components/CommunityView'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
 
-type AppFlow = 'splash' | 'onboarding' | 'login' | 'app';
-type AppTab = 'dashboard' | 'create' | 'heatmap' | 'analytics' | 'coach' | 'achievements' | 'settings';
+// Loading Fallback
+const ViewLoading = () => (
+  <div className="h-full w-full flex items-center justify-center min-h-[400px]">
+    <div className="flex flex-col items-center gap-4">
+      <Loader2 className="w-10 h-10 text-purple-500 animate-spin" />
+      <p className="text-sm font-mono text-purple-400 animate-pulse uppercase tracking-widest">Initializing Module...</p>
+    </div>
+  </div>
+);
+
+export type AppFlow = 'splash' | 'onboarding' | 'login' | 'app';
+export type AppTab = 'dashboard' | 'hobbies' | 'analytics' | 'coach' | 'achievements' | 'calendar' | 'reminders' | 'community' | 'profile' | 'settings';
 
 export default function App() {
   // State 1: Current application flow phase
@@ -90,9 +105,57 @@ export default function App() {
     return saved === 'true';
   });
 
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const profileUnsubRef = useRef<(() => void) | null>(null);
   const [isCoachTyping, setIsCoachTyping] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // App Tour State
+  const [runTour, setRunTour] = useState(false);
+  const tourSteps: Step[] = [
+    {
+      target: '.tour-welcome',
+      content: 'Welcome to Hobby Tracker! Let\'s take a quick tour of your new dashboard.',
+      skipBeacon: true,
+    },
+    {
+      target: '.tour-stats',
+      content: 'Here you can track your total XP, current level, and active streak. Stay consistent to level up!',
+    },
+    {
+      target: '.tour-nav-hobbies',
+      content: 'Manage your hobbies, explore new ones, or use the Roulette feature if you can\'t decide what to do!',
+    },
+    {
+      target: '.tour-hobby-card',
+      content: 'This is one of your active hobbies. You can log your progress right from here.',
+    },
+    {
+      target: '.tour-focus-btn',
+      content: 'New Feature! Use the Focus Timer to run a Pomodoro session and log your deep work states and energy impact.',
+    },
+    {
+      target: '.tour-nav-analytics',
+      content: 'Dive deep into your consistency heatmaps, energy levels, and flow state metrics.',
+    }
+  ];
+
+  const handleJoyrideCallback = (data: EventData) => {
+    const { status } = data;
+    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
+    
+    if (finishedStatuses.includes(status)) {
+      setRunTour(false);
+    }
+  };
+
+  const handleStartTour = () => {
+    setActiveTab('dashboard'); // Switch to dashboard to ensure targets exist
+    setTimeout(() => {
+      setRunTour(true);
+    }, 300);
+  };
 
   // Sync state to localstorage
   useEffect(() => {
@@ -108,7 +171,7 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
 
-  // Auth & Cloud Firestore Sync State Engine
+  // 1. Auth State Engine
   useEffect(() => {
     if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -116,93 +179,167 @@ export default function App() {
       if (firebaseUser) {
         setFlow('app');
         setUserName(firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'sudharsan');
-        
-        if (db) {
-          try {
-            // 1. Sync User Profile
-            const userRef = doc(db, 'users', firebaseUser.uid);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-              const userData = userSnap.data();
-              if (userData.privacySettings) setPrivacySettings(userData.privacySettings);
-              if (typeof userData.isDarkMode === 'boolean') setIsDarkMode(userData.isDarkMode);
-            } else {
-              await setDoc(userRef, {
-                uid: firebaseUser.uid,
-                displayName: firebaseUser.displayName || 'Member',
-                email: firebaseUser.email || '',
-                photoURL: firebaseUser.photoURL || '',
-                createdAt: new Date().toISOString(),
-                isDarkMode,
-                privacySettings
-              }, { merge: true });
-            }
-
-            // 2. Sync Hobbies Subcollection
-            const hobbiesRef = collection(db, 'users', firebaseUser.uid, 'hobbies');
-            const hobbiesSnap = await getDocs(hobbiesRef);
-            if (!hobbiesSnap.empty) {
-              const cloudHobbies: Hobby[] = [];
-              hobbiesSnap.forEach((doc) => {
-                cloudHobbies.push({ ...doc.data(), id: doc.id } as Hobby);
-              });
-              setHobbies(cloudHobbies);
-            } else {
-              // Upload existing localStorage/INITIAL hobbies to cloud
-              for (const h of hobbies) {
-                await setDoc(doc(hobbiesRef, h.id), h);
-              }
-            }
-
-            // 3. Sync Achievements Subcollection
-            const achievementsRef = collection(db, 'users', firebaseUser.uid, 'achievements');
-            const achievementsSnap = await getDocs(achievementsRef);
-            if (!achievementsSnap.empty) {
-              const cloudAch: Achievement[] = [];
-              achievementsSnap.forEach((doc) => {
-                cloudAch.push({ ...doc.data(), id: doc.id } as Achievement);
-              });
-              setAchievements(cloudAch);
-            } else {
-              for (const a of achievements) {
-                await setDoc(doc(achievementsRef, a.id), a);
-              }
-            }
-
-            // 4. Sync Chat History Subcollection
-            const chatRef = collection(db, 'users', firebaseUser.uid, 'chat_messages');
-            const chatSnap = await getDocs(chatRef);
-            if (!chatSnap.empty) {
-              const cloudChat: ChatMessage[] = [];
-              chatSnap.forEach((doc) => {
-                cloudChat.push({ ...doc.data(), id: doc.id } as ChatMessage);
-              });
-              cloudChat.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-              setChatHistory(cloudChat);
-            } else {
-              for (const c of chatHistory) {
-                await setDoc(doc(chatRef, c.id), c);
-              }
-            }
-          } catch (e) {
-            console.warn("Firestore collection sync warn (standard sandbox/offline behavior):", e);
-          }
-        }
+      } else {
+        setFlow('login');
+        setUserProfile(null);
       }
     });
     return () => unsubscribe();
   }, []);
 
+  // 2. Real-time User Profile & Sub-collection Sync Engine
+  useEffect(() => {
+    if (!currentUser || !db) {
+      if (profileUnsubRef.current) {
+        profileUnsubRef.current();
+        profileUnsubRef.current = null;
+      }
+      return;
+    }
+
+    const userRef = doc(db, 'users', currentUser.uid);
+    profileUnsubRef.current = onSnapshot(userRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const fullProfile: UserProfile = {
+          uid: currentUser.uid,
+          username: data.username || currentUser.email?.split('@')[0] || 'user_' + currentUser.uid.slice(0, 5),
+          displayName: data.displayName || currentUser.displayName || 'Member',
+          email: data.email || currentUser.email || '',
+          profileImage: data.profileImage || currentUser.photoURL || '',
+          socialLinks: data.socialLinks || {},
+          xp: data.xp || 0,
+          level: data.level || 1,
+          achievementsCount: data.achievementsCount || 0,
+          currentTheme: data.currentTheme || (isDarkMode ? 'dark' : 'light'),
+          notificationPreferences: data.notificationPreferences || {
+            push: true,
+            sms: true,
+            whatsapp: true,
+            email: true
+          },
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          ...data
+        };
+        setUserProfile(fullProfile);
+        setUserName(fullProfile.displayName);
+        
+        // Only update theme if it differs to avoid re-render loops
+        setIsDarkMode(prev => {
+          const cloudTheme = fullProfile.currentTheme === 'dark';
+          return prev === cloudTheme ? prev : cloudTheme;
+        });
+      } else {
+        // Create initial profile if missing
+        const initialProfile: UserProfile = {
+          uid: currentUser.uid,
+          username: currentUser.email?.split('@')[0] || 'user_' + currentUser.uid.slice(0, 5),
+          displayName: currentUser.displayName || 'Member',
+          email: currentUser.email || '',
+          profileImage: currentUser.photoURL || '',
+          socialLinks: {},
+          xp: 0,
+          level: 1,
+          achievementsCount: 0,
+          currentTheme: 'dark', // Default to dark for new profiles
+          notificationPreferences: {
+            push: true,
+            sms: true,
+            whatsapp: true,
+            email: true
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        try {
+          await setDoc(userRef, initialProfile);
+          setUserProfile(initialProfile); // Set immediately to avoid stuck loading
+        } catch (e) {
+          console.error("Failed to create initial profile:", e);
+        }
+      }
+    });
+
+    const syncSubcollections = async () => {
+      try {
+        // Sync Hobbies
+        const hobbiesRef = collection(db, 'users', currentUser.uid, 'hobbies');
+        const hobbiesSnap = await getDocs(hobbiesRef);
+        if (!hobbiesSnap.empty) {
+          const cloudHobbies: Hobby[] = [];
+          hobbiesSnap.forEach((doc) => {
+            cloudHobbies.push({ ...doc.data(), id: doc.id } as Hobby);
+          });
+          setHobbies(cloudHobbies);
+        } else {
+          // Upload local hobbies concurrently
+          await Promise.all(hobbies.map(h => setDoc(doc(hobbiesRef, h.id), h)));
+        }
+
+        // Sync Achievements
+        const achievementsRef = collection(db, 'users', currentUser.uid, 'achievements');
+        const achievementsSnap = await getDocs(achievementsRef);
+        if (!achievementsSnap.empty) {
+          const cloudAch: Achievement[] = [];
+          achievementsSnap.forEach((doc) => {
+            cloudAch.push({ ...doc.data(), id: doc.id } as Achievement);
+          });
+          setAchievements(cloudAch);
+        } else {
+          await Promise.all(achievements.map(a => setDoc(doc(achievementsRef, a.id), a)));
+        }
+
+        // Sync Chat History
+        const chatRef = collection(db, 'users', currentUser.uid, 'chat_messages');
+        const chatSnap = await getDocs(chatRef);
+        if (!chatSnap.empty) {
+          const cloudChat: ChatMessage[] = [];
+          chatSnap.forEach((doc) => {
+            cloudChat.push({ ...doc.data(), id: doc.id } as ChatMessage);
+          });
+          cloudChat.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          setChatHistory(cloudChat);
+        } else {
+          await Promise.all(chatHistory.map(c => setDoc(doc(chatRef, c.id), c)));
+        }
+      } catch (e) {
+        console.warn("Firestore sub-sync warning:", e);
+      }
+    };
+
+    syncSubcollections();
+
+    return () => {
+      if (profileUnsubRef.current) {
+        profileUnsubRef.current();
+        profileUnsubRef.current = null;
+      }
+    };
+  }, [currentUser?.uid, db]);
+
   // Action: Transition splash to onboarding
   const handleSplashComplete = () => {
     if (flow === 'splash') {
-      setFlow('onboarding');
+      const hasCompletedTour = localStorage.getItem('hobbysync_tour_completed');
+      if (!hasCompletedTour) {
+        setFlow('onboarding');
+      } else if (currentUser) {
+        setFlow('app');
+      } else {
+        setFlow('login');
+      }
     }
   };
 
   // Action: Transition onboarding to login
   const handleOnboardingComplete = () => {
-    setFlow('login');
+    localStorage.setItem('hobbysync_tour_completed', 'true');
+    if (currentUser) {
+      setFlow('app');
+    } else {
+      setFlow('login');
+    }
   };
 
   // Action: Complete login authentication
@@ -233,7 +370,7 @@ export default function App() {
   };
 
   // Action: Log duration/activities done today for a specific hobby
-  const handleLogProgress = (hobbyId: string, duration: number, notes: string) => {
+  const handleLogProgress = (hobbyId: string, duration: number, notes: string, flowState?: boolean, energyDelta?: number) => {
     let updatedObj: Hobby | null = null;
     setHobbies((prev) => 
       prev.map((hobby) => {
@@ -241,13 +378,15 @@ export default function App() {
           const completedTodayNow = true;
           // Calculate streak change if newly completed today
           const streakNow = hobby.completedToday ? hobby.streak : hobby.streak + 1;
-          const xpGained = duration * 10; // 10 XP per minute
+          const xpGained = duration * 10 + (flowState ? 50 : 0); // 10 XP per minute + 50 for flow state
 
           const newLog = {
             id: `log-${Date.now()}`,
             timestamp: new Date().toISOString(),
             duration,
-            notes
+            notes,
+            flowState,
+            energyDelta
           };
 
           updatedObj = {
@@ -502,6 +641,22 @@ export default function App() {
         : 'ambient-bg text-slate-900'
     }`}>
       
+      {/* Tour Overlay */}
+      <Joyride
+        steps={tourSteps}
+        run={runTour}
+        continuous
+        onEvent={handleJoyrideCallback}
+        options={{
+          primaryColor: '#9333ea', // purple-600
+          backgroundColor: isDarkMode ? '#1e1b4b' : '#ffffff', // slate-900 approx or white
+          textColor: isDarkMode ? '#f8fafc' : '#0f172a',
+          arrowColor: isDarkMode ? '#1e1b4b' : '#ffffff',
+          showProgress: true,
+          buttons: ['back', 'primary', 'skip'], // Include skip button
+        }}
+      />
+
       {/* Glow aura elements in page background */}
       <div className={`absolute top-0 left-0 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse duration-5000 ${
         isDarkMode ? 'bg-purple-900/15' : 'bg-purple-300/10'
@@ -511,268 +666,25 @@ export default function App() {
       }`} />
 
       {/* Primary Navigation Glassmorphic Header */}
-      <nav className="sticky top-4 z-40 w-full max-w-5xl mx-auto px-4">
-        <div className={`rounded-2xl py-3 px-5 flex items-center justify-between shadow-md border ${
-          isDarkMode ? 'glass-panel-dark border-purple-900/40' : 'glass-panel border-white/60'
-        }`}>
-          
-          {/* Logo element */}
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-500 flex items-center justify-center text-white text-xs font-bold font-display shadow-xs">
-              H
-            </div>
-            <span className={`font-display font-bold text-base tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Hobby Tracker</span>
-          </div>
-
-          {/* Desktop Navigation Link Tabs */}
-          <div className="hidden md:flex items-center gap-1">
-            {[
-              { id: 'dashboard', label: 'Home', icon: Home },
-              { id: 'create', label: 'Create', icon: Plus },
-              { id: 'heatmap', label: 'Heatmaps', icon: Calendar },
-              { id: 'analytics', label: 'Analytics', icon: BarChart2 },
-              { id: 'coach', label: 'AI Coach', icon: MessageSquare },
-              { id: 'achievements', label: 'Badges', icon: Award },
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ].map((tab) => {
-              const TabIcon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as AppTab)}
-                  className={`py-1.5 px-3 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isActive 
-                      ? 'bg-purple-600 text-white shadow-xs' 
-                      : isDarkMode 
-                        ? 'text-slate-400 hover:text-purple-400 hover:bg-purple-950/40' 
-                        : 'text-gray-500 hover:text-purple-600 hover:bg-white/40'
-                  }`}
-                >
-                  <TabIcon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Right Header Side elements */}
-          <div className="flex items-center gap-2.5 relative">
-            
-            {/* Quick theme toggler */}
-            <button 
-              onClick={handleToggleTheme}
-              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className={`p-2 rounded-full transition-all cursor-pointer ${
-                isDarkMode ? 'text-amber-400 hover:bg-purple-950/60' : 'text-gray-500 hover:text-purple-600 hover:bg-white/55'
-              }`}
-            >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-
-            {/* Notification bell trigger */}
-            <button className={`p-2 rounded-full transition-all cursor-pointer ${
-              isDarkMode ? 'text-slate-400 hover:bg-purple-950/60' : 'text-gray-500 hover:text-purple-600 hover:bg-white/55'
-            }`}>
-              <Bell className="w-4 h-4" />
-            </button>
-
-            {/* Profile trigger */}
-            <button 
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-100 to-indigo-50 border border-purple-200 flex items-center justify-center text-purple-700 font-semibold text-xs shadow-xs hover:border-purple-300 transition-all cursor-pointer overflow-hidden"
-            >
-              <User className="w-4 h-4" />
-            </button>
-
-            {/* Mobile Hamburger menu trigger */}
-            <button
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`md:hidden p-2 rounded-full transition-all cursor-pointer ${
-                isDarkMode ? 'text-slate-400 hover:bg-purple-950/60' : 'text-gray-500 hover:text-purple-600 hover:bg-white/55'
-              }`}
-              title="Toggle Menu"
-            >
-              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-
-            {/* Profile Dropdown menu */}
-            <AnimatePresence>
-              {showProfileMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95, y: 5 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                    className={`absolute right-0 top-11 rounded-2xl p-2.5 w-48 shadow-xl border z-50 space-y-1 ${
-                      isDarkMode 
-                        ? 'bg-[#120e24] border-purple-900/60 text-slate-100' 
-                        : 'bg-white/95 backdrop-blur-md border-purple-100/50'
-                    }`}
-                  >
-                    <div className="px-3.5 py-2 border-b border-purple-50/10">
-                      <div className="font-semibold text-xs font-display capitalize">{userName}</div>
-                      <div className="text-[9px] text-gray-400 font-mono tracking-wide lowercase mt-0.5">{userName}@hobbysync.io</div>
-                    </div>
-                    
-                    <button 
-                      onClick={() => {
-                        setActiveTab('settings');
-                        setShowProfileMenu(false);
-                      }}
-                      className="w-full text-left py-2 px-3 hover:bg-purple-500/10 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
-                    >
-                      <Settings className="w-3.5 h-3.5 text-gray-400" />
-                      Settings Configuration
-                    </button>
-
-                    <button 
-                      onClick={handleLogout}
-                      className="w-full text-left py-2 px-3 hover:bg-rose-500/10 rounded-xl text-xs font-semibold text-rose-500 flex items-center gap-2 transition-all cursor-pointer"
-                    >
-                      <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                      Logout Session
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-
-            {/* Mobile Navigation Drawer Backdrop & Sheet */}
-            <AnimatePresence>
-              {isMobileMenuOpen && (
-                <>
-                  {/* Glassmorphic backdrop */}
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 md:hidden"
-                  />
-                  
-                  {/* Sliding Drawer Container */}
-                  <motion.div 
-                    initial={{ x: '100%' }}
-                    animate={{ x: 0 }}
-                    exit={{ x: '100%' }}
-                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                    className={`fixed right-0 top-0 bottom-0 w-80 max-w-[90vw] h-full shadow-2xl z-50 p-6 flex flex-col justify-between md:hidden border-l ${
-                      isDarkMode 
-                        ? 'bg-[#0f0c1c] border-purple-900/60 text-slate-100' 
-                        : 'bg-white border-purple-100 text-slate-900'
-                    }`}
-                  >
-                    <div className="space-y-6">
-                      {/* Drawer Header */}
-                      <div className="flex items-center justify-between pb-4 border-b border-purple-500/10">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-500 flex items-center justify-center text-white text-xs font-bold font-display shadow-xs">
-                            H
-                          </div>
-                          <span className="font-display font-bold text-lg tracking-tight">Hobby Pages</span>
-                        </div>
-                        <button 
-                          onClick={() => setIsMobileMenuOpen(false)}
-                          className="p-1.5 rounded-full hover:bg-purple-500/10 text-gray-400 hover:text-purple-400 cursor-pointer"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* User Welcoming */}
-                      <div className="px-3.5 py-3 bg-purple-500/5 rounded-xl border border-purple-500/10 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 text-sm font-semibold capitalize">
-                          {userName.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold font-display capitalize">Hello, {userName}!</div>
-                          <div className="text-[9px] text-gray-400 font-mono">Premium Account Active</div>
-                        </div>
-                      </div>
-
-                      {/* Navigation Pages List */}
-                      <div className="space-y-1.5 max-h-[55vh] overflow-y-auto pr-1">
-                        {[
-                          { id: 'dashboard', label: 'Home Dashboard', icon: Home, desc: 'Logs, streaks, and Diagnostics' },
-                          { id: 'create', label: 'Create Hobby', icon: Plus, desc: 'Add habits & setup triggers' },
-                          { id: 'heatmap', label: 'Consistency Heatmaps', icon: Calendar, desc: 'High-density activity calendars' },
-                          { id: 'analytics', label: 'Habit Analytics', icon: BarChart2, desc: 'Log hours & completion trends' },
-                          { id: 'coach', label: 'AI Habit Coach', icon: MessageSquare, desc: 'Talk to smart Gemini AI' },
-                          { id: 'achievements', label: 'Milestone Badges', icon: Award, desc: 'Earn badges and level up' },
-                          { id: 'settings', label: 'Settings & Alerts', icon: Settings, desc: 'Configure SMS & privacy rules' },
-                        ].map((tab) => {
-                          const TabIcon = tab.icon;
-                          const isActive = activeTab === tab.id;
-                          return (
-                            <button
-                              key={tab.id}
-                              onClick={() => {
-                                setActiveTab(tab.id as AppTab);
-                                setIsMobileMenuOpen(false);
-                              }}
-                              className={`w-full text-left p-3 rounded-xl flex items-start gap-3.5 transition-all cursor-pointer ${
-                                isActive 
-                                  ? 'bg-purple-600 text-white shadow-xs' 
-                                  : isDarkMode 
-                                    ? 'text-slate-300 hover:text-purple-400 hover:bg-purple-950/40' 
-                                    : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50/50'
-                              }`}
-                            >
-                              <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${isActive ? 'bg-white/20' : 'bg-purple-500/10 text-purple-400'}`}>
-                                <TabIcon className="w-4 h-4" />
-                              </div>
-                              <div className="space-y-0.5">
-                                <div className="text-xs font-bold">{tab.label}</div>
-                                <p className={`text-[10px] leading-snug ${isActive ? 'text-purple-100' : 'text-gray-400'}`}>{tab.desc}</p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Drawer Footer Actions */}
-                    <div className="space-y-3.5 pt-4 border-t border-purple-500/10">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400 font-mono">Theme Preferences</span>
-                        <button 
-                          onClick={handleToggleTheme}
-                          className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold cursor-pointer ${
-                            isDarkMode 
-                              ? 'border-purple-900/60 bg-purple-950/40 text-amber-400' 
-                              : 'border-purple-100 bg-purple-50/30 text-purple-600'
-                          }`}
-                        >
-                          {isDarkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-                          <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                        </button>
-                      </div>
-
-                      <button 
-                        onClick={() => {
-                          handleLogout();
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className="w-full py-2.5 px-4 rounded-xl text-center font-bold text-xs bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Sign Out Account
-                      </button>
-                    </div>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-
-          </div>
-
-        </div>
-      </nav>
+      <NavBar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isDarkMode={isDarkMode} 
+        handleToggleTheme={handleToggleTheme}
+        showProfileMenu={showProfileMenu}
+        setShowProfileMenu={setShowProfileMenu}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
+        userName={userName}
+        handleLogout={handleLogout}
+        onStartTour={handleStartTour}
+        userProfile={userProfile}
+      />
 
       {/* Main Workspace Frame content */}
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8 relative">
+      <main className={`flex-1 w-full max-w-5xl mx-auto px-6 py-8 my-4 relative rounded-3xl border shadow-xl ${
+        isDarkMode ? 'glass-panel-dark border-purple-900/40' : 'glass-panel border-white/60'
+      }`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -782,68 +694,87 @@ export default function App() {
             transition={{ duration: 0.3, ease: 'easeOut' }}
             className="h-full"
           >
-            {activeTab === 'dashboard' && (
-              <DashboardView
-                currentUser={currentUser}
-                userName={userName}
-                hobbies={hobbies}
-                allAchievements={achievements}
-                isDarkMode={isDarkMode}
-                onLogProgress={handleLogProgress}
-                onNavigateToCreate={() => setActiveTab('create')}
-                onNavigateToProfile={() => setActiveTab('settings')}
-                onUpdateHobby={handleUpdateHobby}
-                onDeleteHobby={handleDeleteHobby}
-                onDeleteLog={handleDeleteLog}
-                onRefreshHobbies={syncHobbiesFromCloud}
-              />
-            )}
-            {activeTab === 'create' && (
-              <HobbyCreationView onCreateHobby={handleCreateHobby} isDarkMode={isDarkMode} />
-            )}
-            {activeTab === 'heatmap' && (
-              <HeatmapsView hobbies={hobbies} isDarkMode={isDarkMode} />
-            )}
-            {activeTab === 'analytics' && (
-              <AnalyticsView hobbies={hobbies} isDarkMode={isDarkMode} />
-            )}
-            {activeTab === 'coach' && (
-              <CoachChatView
-                chatHistory={chatHistory}
-                isDarkMode={isDarkMode}
-                onSendMessage={handleSendMessage}
-                isCoachTyping={isCoachTyping}
-              />
-            )}
-            {activeTab === 'achievements' && (
-              <AchievementsView achievements={achievements} isDarkMode={isDarkMode} />
-            )}
-            {activeTab === 'settings' && (
-              <SettingsView
-                settings={privacySettings}
-                isDarkMode={isDarkMode}
-                onToggleSetting={handleToggleSetting}
-                onToggleTheme={handleToggleTheme}
-              />
-            )}
+            <Suspense fallback={<ViewLoading />}>
+              {activeTab === 'dashboard' && (
+                <DashboardView
+                  currentUser={currentUser}
+                  userName={userName}
+                  hobbies={hobbies}
+                  allAchievements={achievements}
+                  isDarkMode={isDarkMode}
+                  onLogProgress={handleLogProgress}
+                  onNavigateToCreate={() => setActiveTab('hobbies')}
+                  onNavigateToProfile={() => setActiveTab('settings')}
+                  onUpdateHobby={handleUpdateHobby}
+                  onDeleteHobby={handleDeleteHobby}
+                  onDeleteLog={handleDeleteLog}
+                  onRefreshHobbies={syncHobbiesFromCloud}
+                  userProfile={userProfile}
+                />
+              )}
+              {activeTab === 'hobbies' && (
+                <MyHobbiesView 
+                  hobbies={hobbies} 
+                  isDarkMode={isDarkMode} 
+                  onCreateHobby={handleCreateHobby} 
+                  onDeleteHobby={handleDeleteHobby} 
+                />
+              )}
+              {activeTab === 'calendar' && (
+                <HeatmapsView hobbies={hobbies} isDarkMode={isDarkMode} />
+              )}
+              {activeTab === 'analytics' && (
+                <AnalyticsView hobbies={hobbies} isDarkMode={isDarkMode} />
+              )}
+              {activeTab === 'coach' && (
+                <CoachChatView
+                  chatHistory={chatHistory}
+                  isDarkMode={isDarkMode}
+                  onSendMessage={handleSendMessage}
+                  isCoachTyping={isCoachTyping}
+                  userProfile={userProfile}
+                />
+              )}
+              {activeTab === 'achievements' && (
+                <AchievementsView achievements={achievements} isDarkMode={isDarkMode} />
+              )}
+              {activeTab === 'reminders' && (
+                <RemindersView isDarkMode={isDarkMode} />
+              )}
+              {activeTab === 'community' && (
+                <CommunityView isDarkMode={isDarkMode} />
+              )}
+              {activeTab === 'profile' && (
+                <ProfileView 
+                  userProfile={userProfile} 
+                  isDarkMode={isDarkMode} 
+                />
+              )}
+              {activeTab === 'settings' && (
+                <SettingsView
+                  settings={privacySettings}
+                  isDarkMode={isDarkMode}
+                  onToggleSetting={handleToggleSetting}
+                  onToggleTheme={handleToggleTheme}
+                />
+              )}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>
 
       {/* Mobile Sticky Footer Bar Navigation (highly responsive for mobile viewports) */}
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 py-2.5 px-6 flex justify-between items-center shadow-lg border-t ${
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 z-40 py-2.5 px-6 flex justify-between items-center shadow-lg border-t ${
         isDarkMode 
           ? 'bg-[#0f0c1c]/95 backdrop-blur-md border-purple-900/40 text-slate-100' 
           : 'bg-white/90 backdrop-blur-md border-purple-100 text-gray-800'
       }`}>
         {[
           { id: 'dashboard', icon: Home },
-          { id: 'create', icon: Plus },
-          { id: 'heatmap', icon: Calendar },
+          { id: 'hobbies', icon: Plus },
           { id: 'analytics', icon: BarChart2 },
           { id: 'coach', icon: MessageSquare },
-          { id: 'achievements', icon: Award },
-          { id: 'settings', icon: Settings },
+          { id: 'profile', icon: User },
         ].map((tab) => {
           const MobileIcon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -875,13 +806,6 @@ export default function App() {
             <button className="hover:text-purple-400 transition-colors cursor-pointer">Support</button>
           </div>
           <div>
-            {activeTab === 'heatmap' && <span>Version 2.2.0 - Premium Edition</span>}
-            {activeTab === 'analytics' && <span>Version 2.2.0 - Light-SaaS Edition</span>}
-            {activeTab === 'dashboard' && <span>Version 2.1.0 - Cyber-Minimalist Edition</span>}
-            {activeTab === 'create' && <span>Version 2.1.0 - Cyber-Minimalist Edition</span>}
-            {activeTab === 'coach' && <span>Version 2.1.0 - Cyber-Minimalist Edition</span>}
-            {activeTab === 'achievements' && <span>Version 2.1.0 - Premium Light Edition</span>}
-            {activeTab === 'settings' && <span>Version 2.2.0</span>}
           </div>
         </div>
       </footer>

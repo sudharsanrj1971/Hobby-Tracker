@@ -6,15 +6,27 @@
       "type": "object",
       "properties": {
         "uid": { "type": "string", "description": "Unique user ID" },
+        "username": { "type": "string", "description": "Unique username" },
         "displayName": { "type": "string", "description": "Display name" },
         "email": { "type": "string", "description": "Email address" },
-        "photoURL": { "type": "string", "description": "Profile picture URL" },
-        "lastLogin": { "type": "string", "format": "date-time", "description": "Last login timestamp" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
-        "isDarkMode": { "type": "boolean", "description": "True if dark theme is selected" },
-        "privacySettings": { "type": "object", "description": "Custom user notification and AI preferences" }
+        "phone": { "type": "string" },
+        "bio": { "type": "string" },
+        "profileImage": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "dateOfBirth": { "type": "string" },
+        "country": { "type": "string" },
+        "language": { "type": "string" },
+        "gender": { "type": "string" },
+        "socialLinks": { "type": "object" },
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "achievementsCount": { "type": "number" },
+        "currentTheme": { "type": "string" },
+        "notificationPreferences": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "displayName"]
+      "required": ["uid", "username", "displayName", "email"]
     },
     "Hobby": {
       "title": "Hobby",

@@ -89,7 +89,7 @@ export default function OnboardingView({ onComplete }: OnboardingProps) {
     },
     {
       title: 'Habit Coach Chatbot',
-      description: 'Your intelligent personalized guide, powered by Gemini to help you stay motivated.',
+      description: 'Your intelligent personalized guide to help you stay motivated.',
       accentText: 'Tailored AI Productivity Insights',
       graphic: (
         <div className="relative w-full h-44 bg-purple-50/50 rounded-xl flex items-center justify-center p-4 overflow-hidden border border-purple-100/40">

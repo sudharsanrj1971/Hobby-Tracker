@@ -13,12 +13,12 @@ export default function SplashView({ onComplete }: SplashProps) {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
-          setTimeout(onComplete, 500); // Small buffer before fading out
+          onComplete(); // Remove delay
           return 100;
         }
-        return prev + 4;
+        return prev + 10;
       });
-    }, 60);
+    }, 30);
 
     return () => clearInterval(interval);
   }, [onComplete]);

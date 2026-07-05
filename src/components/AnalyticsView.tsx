@@ -60,6 +60,21 @@ export default function AnalyticsView({ hobbies, isDarkMode = false }: Analytics
     target: Number((totalDailyTargetHours || 1.5).toFixed(1))
   }));
 
+  // Calculate Flow State and Energy Metrics
+  let totalLogsCount = 0;
+  let flowStateLogsCount = 0;
+  let totalEnergyDelta = 0;
+
+  hobbies.forEach(h => {
+    (h.logs || []).forEach(log => {
+      totalLogsCount++;
+      if (log.flowState) flowStateLogsCount++;
+      if (log.energyDelta) totalEnergyDelta += log.energyDelta;
+    });
+  });
+
+  const flowStatePercentage = totalLogsCount > 0 ? Math.round((flowStateLogsCount / totalLogsCount) * 100) : 0;
+
   // Dynamic metrics
   const totalXpScore = hobbies.reduce((acc, h) => acc + (h.totalXp || 0), 1250);
   const totalUnlocksCount = hobbies.filter(h => h.streak >= 7).length + 3; // simulated unlocked badges
@@ -198,7 +213,7 @@ export default function AnalyticsView({ hobbies, isDarkMode = false }: Analytics
         <div className="md:col-span-5 space-y-6">
           
           {/* Achievement Statistics row card */}
-          <div className={`rounded-3xl p-6 border ${
+          <div className={`rounded-3xl p-6 border mb-6 ${
             isDarkMode ? 'glass-panel-dark border-purple-900/40' : 'glass-panel border-white/60'
           }`}>
             <h3 className="text-xs font-mono tracking-wider uppercase font-semibold text-purple-400 border-b border-purple-50/10 pb-2 mb-4">
@@ -209,7 +224,7 @@ export default function AnalyticsView({ hobbies, isDarkMode = false }: Analytics
               <div className={`p-4 rounded-2xl flex items-center gap-3 border ${
                 isDarkMode ? 'bg-slate-950/40 border-purple-900/20' : 'bg-white/40 border-purple-100'
               }`}>
-                <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 shrink-0">
                   <Trophy className="w-5 h-5" />
                 </div>
                 <div>
@@ -221,13 +236,40 @@ export default function AnalyticsView({ hobbies, isDarkMode = false }: Analytics
               <div className={`p-4 rounded-2xl flex items-center gap-3 border ${
                 isDarkMode ? 'bg-slate-950/40 border-purple-900/20' : 'bg-white/40 border-purple-100'
               }`}>
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0">
                   <Star className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="text-2xl font-bold">{totalXpScore}</div>
                   <div className="text-[9px] font-mono text-gray-400 uppercase">Total XP</div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cognitive & Flow State Analytics */}
+          <div className={`rounded-3xl p-6 border ${
+            isDarkMode ? 'glass-panel-dark border-purple-900/40' : 'glass-panel border-white/60'
+          }`}>
+            <h3 className="text-xs font-mono tracking-wider uppercase font-semibold text-purple-400 border-b border-purple-50/10 pb-2 mb-4 flex items-center gap-2">
+              <Brain className="w-4 h-4" /> Cognitive Engagement
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className={`p-4 rounded-2xl flex flex-col justify-center border ${
+                isDarkMode ? 'bg-slate-950/40 border-purple-900/20' : 'bg-white/40 border-purple-100'
+              }`}>
+                <div className="text-3xl font-display font-bold text-emerald-400">{flowStatePercentage}%</div>
+                <div className="text-[9px] font-mono text-gray-400 uppercase mt-1">Deep Flow State Frequency</div>
+              </div>
+
+              <div className={`p-4 rounded-2xl flex flex-col justify-center border ${
+                isDarkMode ? 'bg-slate-950/40 border-purple-900/20' : 'bg-white/40 border-purple-100'
+              }`}>
+                <div className={`text-3xl font-display font-bold ${totalEnergyDelta >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {totalEnergyDelta > 0 ? '+' : ''}{totalEnergyDelta}
+                </div>
+                <div className="text-[9px] font-mono text-gray-400 uppercase mt-1">Net Energy Delta</div>
               </div>
             </div>
           </div>

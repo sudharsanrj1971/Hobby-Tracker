@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Flame, Clock, Calendar, Award, Trash2, Archive, RotateCcw, Edit2, Check, X, Bell, Plus, Settings, Play, Sparkles, BookOpen } from 'lucide-react';
 import { Hobby, ReminderSetting, Achievement } from '../types';
 import { generateHeatmapData } from '../data';
+import HobbyEnvironment from './HobbyEnvironment';
+import { getHobbyTheme, THEMES } from '../lib/visualEngine';
 
 interface HobbyDetailsProps {
   hobby: Hobby;
@@ -33,6 +35,9 @@ export default function HobbyDetailsView({
   const [editPriority, setEditPriority] = useState(hobby.priority || 'medium');
   const [editColor, setEditColor] = useState(hobby.themeColor || '#a855f7');
   
+  const themeType = getHobbyTheme(hobby.name, hobby.category);
+  const theme = THEMES[themeType];
+
   // Log state
   const [showLogForm, setShowLogForm] = useState(false);
   const [logMins, setLogMins] = useState('30');
@@ -67,55 +72,74 @@ export default function HobbyDetailsView({
   const totalHours = (totalMinutes / 60).toFixed(1);
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-end p-0 sm:p-4 bg-black/60 backdrop-blur-xs transition-opacity overflow-y-auto`}>
+    <div className={`fixed inset-0 z-50 flex items-center justify-end p-0 sm:p-4 bg-black/70 backdrop-blur-md transition-opacity overflow-y-auto`}>
       <motion.div 
-        initial={{ opacity: 0, x: 80 }}
+        initial={{ opacity: 0, x: 100 }}
         animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 80 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 150 }}
+        exit={{ opacity: 0, x: 100 }}
+        transition={{ type: 'spring', damping: 30, stiffness: 200 }}
         className={`w-full max-w-2xl h-full sm:h-[95vh] sm:rounded-3xl shadow-2xl flex flex-col relative overflow-hidden border ${
-          isDarkMode ? 'bg-[#0e0c18] border-purple-900/50 text-slate-100' : 'bg-white border-purple-100 text-gray-800'
+          isDarkMode ? 'bg-[#0e0c18] border-white/5 text-slate-100' : 'bg-white border-purple-100 text-gray-800'
         }`}
       >
-        {/* Cover Header */}
-        <div className="relative h-48 sm:h-56 shrink-0 overflow-hidden">
-          <img src={hobby.coverImage} alt={hobby.name} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+        {/* Immersive Header Environment */}
+        <div className="relative h-64 sm:h-72 shrink-0 overflow-hidden">
+          <HobbyEnvironment themeType={themeType} isDarkMode={isDarkMode} intensity="high" />
+          
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0e0c18] via-[#0e0c18]/20 to-transparent" />
           
           {/* Close & Edit Button controls */}
-          <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-            <button 
+          <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
               onClick={onClose}
-              className="p-2.5 rounded-xl bg-black/50 hover:bg-black/75 text-white transition-colors cursor-pointer"
+              className="p-3 rounded-2xl bg-black/40 backdrop-blur-xl border border-white/10 text-white transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
-            </button>
+            </motion.button>
             
-            <div className="flex gap-2">
-              <button 
+            <div className="flex gap-3">
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setIsEditing(!isEditing)}
-                className="py-1.5 px-3 rounded-xl bg-white/15 backdrop-blur-md hover:bg-white/35 text-white font-medium text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                className="py-2 px-4 rounded-2xl bg-white/10 backdrop-blur-xl hover:bg-white/20 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer border border-white/10 shadow-lg"
               >
-                <Edit2 className="w-3.5 h-3.5" /> {isEditing ? 'Cancel Edit' : 'Edit Hobby'}
-              </button>
+                <Edit2 className="w-4 h-4" /> {isEditing ? 'Cancel' : 'Edit Configuration'}
+              </motion.button>
             </div>
           </div>
 
-          {/* Floating Emoji */}
-          <div 
-            style={{ borderColor: hobby.themeColor || '#a855f7' }}
-            className="absolute bottom-4 left-6 w-14 h-14 rounded-2xl bg-white/95 backdrop-blur-md flex items-center justify-center text-3xl shadow-md border-2"
+          {/* Floating Emoji with animation */}
+          <motion.div 
+            initial={{ scale: 0, rotate: -20 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', delay: 0.2 }}
+            style={{ 
+              borderColor: theme.primary,
+              boxShadow: `0 0 30px ${theme.primary}50`
+            }}
+            className="absolute bottom-8 left-8 w-20 h-20 rounded-[2rem] bg-white/10 backdrop-blur-2xl flex items-center justify-center text-4xl shadow-2xl border-2 z-20"
           >
             {hobby.emoji}
-          </div>
+          </motion.div>
 
-          <div className="absolute bottom-4 left-24 right-6 text-white">
-            <span className="text-[10px] font-mono tracking-widest uppercase text-purple-300">
-              {hobby.category} {hobby.archived && '(Archived)'}
-            </span>
-            <h2 className="text-2xl font-display font-bold leading-tight drop-shadow-md">
+          <div className="absolute bottom-8 left-32 right-8 text-white z-20">
+            <motion.span 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="text-xs font-mono tracking-[0.3em] uppercase text-purple-400 font-bold block mb-2"
+            >
+              {hobby.category} {hobby.archived && '• ARCHIVED'}
+            </motion.span>
+            <motion.h2 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-4xl font-display font-bold leading-tight drop-shadow-2xl"
+            >
               {hobby.name}
-            </h2>
+            </motion.h2>
           </div>
         </div>
 
@@ -414,11 +438,23 @@ export default function HobbyDetailsView({
                             isDarkMode ? 'bg-slate-950/40 border-purple-900/20' : 'bg-purple-50/10 border-purple-100/50'
                           }`}>
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-display font-bold text-xs">Logged {log.duration} mins</span>
                                 <span className="text-[10px] text-gray-400">
                                   {new Date(log.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </span>
+                                {log.flowState && (
+                                  <span className="text-[9px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded-full font-mono font-semibold tracking-wide">FLOW STATE</span>
+                                )}
+                                {log.energyDelta !== undefined && (
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-semibold tracking-wide ${
+                                    log.energyDelta > 0 ? 'bg-emerald-500/20 text-emerald-400' :
+                                    log.energyDelta < 0 ? 'bg-orange-500/20 text-orange-400' :
+                                    'bg-gray-500/20 text-gray-400'
+                                  }`}>
+                                    {log.energyDelta > 0 ? '+' : ''}{log.energyDelta} ENERGY
+                                  </span>
+                                )}
                               </div>
                               <p className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-gray-600'}`}>
                                 {log.notes || 'Routine practice completed.'}

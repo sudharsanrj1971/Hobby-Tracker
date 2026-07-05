@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Flame, Plus, CheckCircle, Search, Bell, Award, User, Clock, PenTool, Check, Archive, Eye, RotateCcw, Trash2, Sparkles, Cpu } from 'lucide-react';
-import { Hobby, Achievement } from '../types';
+import { Flame, Plus, CheckCircle, Search, Bell, Award, User, Clock, PenTool, Check, Archive, Eye, RotateCcw, Trash2, Sparkles, Cpu, Timer, X } from 'lucide-react';
+import { Hobby, Achievement, UserProfile } from '../types';
 import HobbyDetailsView from './HobbyDetailsView';
-import DiagnosticsPanel from './DiagnosticsPanel';
+import HobbyEnvironment from './HobbyEnvironment';
+import ProductTour from './ProductTour';
+import { getHobbyTheme, THEMES } from '../lib/visualEngine';
 
 interface DashboardProps {
   currentUser: any;
@@ -11,13 +13,14 @@ interface DashboardProps {
   hobbies: Hobby[];
   allAchievements: Achievement[];
   isDarkMode?: boolean;
-  onLogProgress: (hobbyId: string, duration: number, notes: string) => void;
+  onLogProgress: (hobbyId: string, duration: number, notes: string, flowState?: boolean, energyDelta?: number) => void;
   onNavigateToCreate: () => void;
   onNavigateToProfile: () => void;
   onUpdateHobby: (hobbyId: string, updatedData: Partial<Hobby>) => void;
   onDeleteHobby: (hobbyId: string) => void;
   onDeleteLog: (hobbyId: string, logId: string) => void;
   onRefreshHobbies: () => void;
+  userProfile?: UserProfile | null;
 }
 
 export default function DashboardView({
@@ -33,12 +36,55 @@ export default function DashboardView({
   onDeleteHobby,
   onDeleteLog,
   onRefreshHobbies,
+  userProfile
 }: DashboardProps) {
   const [selectedHobbyForDetails, setSelectedHobbyForDetails] = useState<Hobby | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [selectedHobbyForLog, setSelectedHobbyForLog] = useState<Hobby | null>(null);
   const [logMinutes, setLogMinutes] = useState('30');
   const [logNotes, setLogNotes] = useState('');
+  const [logFlowState, setLogFlowState] = useState(false);
+  const [logEnergyDelta, setLogEnergyDelta] = useState<number>(0);
+
+  // Focus Timer State
+  const [activeTimerHobby, setActiveTimerHobby] = useState<Hobby | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState(25 * 60);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+
+  useEffect(() => {
+    let interval: any = null;
+    if (isTimerRunning && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds(s => s - 1);
+      }, 1000);
+    } else if (timerSeconds === 0) {
+      setIsTimerRunning(false);
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, timerSeconds]);
+
+  const formatTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const handleStartTimer = (e: React.MouseEvent, hobby: Hobby) => {
+    e.stopPropagation();
+    setActiveTimerHobby(hobby);
+    setTimerSeconds(25 * 60);
+    setIsTimerRunning(false);
+  };
+
+  const handleCompleteTimer = () => {
+    if (activeTimerHobby) {
+      const minutesSpent = Math.ceil((25 * 60 - timerSeconds) / 60);
+      onLogProgress(activeTimerHobby.id, minutesSpent || 25, "Completed a Pomodoro Focus Session.", true, 1);
+      setActiveTimerHobby(null);
+      setIsTimerRunning(false);
+    }
+  };
 
   // Local state for Smart Reminders analyzer
   const [aiReminders, setAiReminders] = useState<{
@@ -53,6 +99,20 @@ export default function DashboardView({
   } | null>(null);
   const [isAnalyzingReminders, setIsAnalyzingReminders] = useState(false);
   const [showNotificationsLog, setShowNotificationsLog] = useState(false);
+  const [showProductTour, setShowProductTour] = useState(false);
+
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('hobbysync_product_tour_seen');
+    if (!hasSeenTour) {
+      const timer = setTimeout(() => setShowProductTour(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleTourComplete = () => {
+    localStorage.setItem('hobbysync_product_tour_seen', 'true');
+    setShowProductTour(false);
+  };
   
   // Simulated Notification Dispatch Logs
   const [notificationLogs, setNotificationLogs] = useState<Array<{
@@ -152,12 +212,14 @@ export default function DashboardView({
     setSelectedHobbyForLog(hobby);
     setLogMinutes('30');
     setLogNotes('');
+    setLogFlowState(false);
+    setLogEnergyDelta(0);
   };
 
   const handleLogSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedHobbyForLog) {
-      onLogProgress(selectedHobbyForLog.id, Number(logMinutes), logNotes);
+      onLogProgress(selectedHobbyForLog.id, Number(logMinutes), logNotes, logFlowState, logEnergyDelta);
       setSelectedHobbyForLog(null);
     }
   };
@@ -166,21 +228,39 @@ export default function DashboardView({
     <div className={`space-y-8 max-w-5xl mx-auto py-2 ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
       
       {/* Welcome Banner */}
-      <div className="text-center md:text-left space-y-1.5 py-4">
-        <motion.h1 
-          className="text-4xl md:text-5xl font-display font-bold tracking-tight"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          Welcome, {userName || 'Hobbyist'} 👋
-        </motion.h1>
-        <p className="text-gray-400 text-base md:text-lg tracking-wide font-light">
-          "The secret of your future is hidden in your daily routine." Track your passion today.
-        </p>
+      <div className="tour-welcome flex flex-col md:flex-row items-center md:items-start gap-6 py-4">
+        <div className="relative group">
+          <div className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-gradient-to-br from-purple-600 to-indigo-500 p-[2px] shadow-2xl shadow-purple-500/20">
+            <div className={`w-full h-full rounded-[22px] overflow-hidden ${isDarkMode ? 'bg-[#120e24]' : 'bg-white'}`}>
+              {userProfile?.profileImage ? (
+                <img src={userProfile.profileImage} alt={userName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-3xl font-bold font-display text-purple-500">
+                  {userName.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-xl bg-purple-600 border-2 border-[#120e24] flex items-center justify-center text-white shadow-lg">
+            <Sparkles className="w-4 h-4" />
+          </div>
+        </div>
+        <div className="text-center md:text-left space-y-1.5">
+          <motion.h1 
+            className="text-4xl md:text-5xl font-display font-bold tracking-tight"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            Welcome, {userProfile?.displayName || userName || 'Hobbyist'} 👋
+          </motion.h1>
+          <p className="text-gray-400 text-base md:text-lg tracking-wide font-light">
+            "The secret of your future is hidden in your daily routine." Track your passion today.
+          </p>
+        </div>
       </div>
 
       {/* Stats and Achievements Summary Banner Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="tour-stats grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Today's Progress Card */}
         <div className={`rounded-3xl p-6 shadow-xs flex items-center justify-between border ${
@@ -401,92 +481,116 @@ export default function DashboardView({
         ) : (
           /* Hobbies Bento-style Grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {activeHobbies.map((hobby) => (
-              <motion.div 
-                key={hobby.id}
-                layoutId={`card-${hobby.id}`}
-                onClick={() => setSelectedHobbyForDetails(hobby)}
-                className={`rounded-3xl overflow-hidden shadow-xs border hover:shadow-md transition-all flex flex-col h-full group cursor-pointer relative ${
-                  isDarkMode ? 'glass-panel-dark border-purple-900/20 hover:border-purple-800' : 'glass-panel border-white/60 hover:border-purple-200'
-                }`}
-              >
-                {/* Hobby Cover Image with overlay */}
-                <div className="relative h-40 overflow-hidden shrink-0">
-                  <img 
-                    src={hobby.coverImage} 
-                    alt={hobby.name} 
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
-                  
-                  {/* Emoji Float */}
-                  <div 
-                    style={{ borderColor: hobby.themeColor || '#a855f7' }}
-                    className="absolute top-3 left-3 w-10 h-10 rounded-2xl bg-white/95 backdrop-blur-md flex items-center justify-center text-xl shadow-xs border-2"
-                  >
-                    {hobby.emoji}
-                  </div>
-
-                  {/* Completed Checklist Tag */}
-                  {hobby.completedToday && (
-                    <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-xs border border-emerald-400/20">
-                      <Check className="w-3 h-3 stroke-[3]" /> Done Today
-                    </div>
-                  )}
-
-                  {/* Name on card bottom overlay */}
-                  <div className="absolute bottom-3 left-4 right-4 text-white">
-                    <span className="text-[9px] font-mono tracking-widest uppercase text-purple-300">
-                      {hobby.category}
-                    </span>
-                    <h4 className="text-lg font-display font-bold leading-tight drop-shadow-md">
-                      {hobby.name}
-                    </h4>
-                  </div>
-                </div>
-
-                {/* Card Action content */}
-                <div className="p-5 flex-1 flex flex-col justify-between bg-white/5">
-                  <p className="text-xs text-gray-400 italic line-clamp-2 mb-4">
-                    "{hobby.description || 'Consistency starts with action.'}"
-                  </p>
-
-                  <div className="flex justify-between items-center mb-4 pt-1 border-t border-purple-500/5">
-                    {/* Streak and details */}
-                    <div className="flex items-center gap-1.5 text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-xl border border-orange-500/20">
-                      <Flame className="w-3.5 h-3.5 fill-current text-orange-500" />
-                      <span className="font-bold text-xs">{hobby.streak} days</span>
-                    </div>
+            {activeHobbies.map((hobby, index) => {
+              const themeType = getHobbyTheme(hobby.name, hobby.category);
+              const theme = THEMES[themeType];
+              
+              return (
+                <motion.div 
+                  key={hobby.id}
+                  layoutId={`card-${hobby.id}`}
+                  onClick={() => setSelectedHobbyForDetails(hobby)}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                  className={`${index === 0 ? 'tour-hobby-card' : ''} rounded-3xl overflow-hidden shadow-xs border hover:shadow-md transition-all flex flex-col h-full group cursor-pointer relative ${
+                    isDarkMode ? 'glass-panel-dark border-purple-900/20 hover:border-purple-800' : 'glass-panel border-white/60 hover:border-purple-200 shadow-sm'
+                  }`}
+                >
+                  {/* Hobby Immersive Visual Header */}
+                  <div className="relative h-44 overflow-hidden shrink-0">
+                    <HobbyEnvironment themeType={themeType} isDarkMode={isDarkMode} intensity="medium" />
                     
-                    <div className="text-right text-xs text-gray-400">
-                      Daily Goal: <span className="font-semibold text-purple-400">{hobby.dailyGoal}h</span>
+                    {/* Emoji Float */}
+                    <motion.div 
+                      whileHover={{ scale: 1.2, rotate: 10 }}
+                      style={{ 
+                        borderColor: theme.primary,
+                        boxShadow: `0 0 20px ${theme.primary}40`
+                      }}
+                      className="absolute top-4 left-4 w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xl flex items-center justify-center text-2xl shadow-xl border border-white/20"
+                    >
+                      {hobby.emoji}
+                    </motion.div>
+
+                    {/* Completed Checklist Tag */}
+                    {hobby.completedToday && (
+                      <div className="absolute top-4 right-4 bg-emerald-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-lg border border-emerald-400/30">
+                        <Check className="w-3.5 h-3.5 stroke-[3]" /> Done
+                      </div>
+                    )}
+
+                    {/* Name on card bottom overlay */}
+                    <div className="absolute bottom-4 left-5 right-5 text-white">
+                      <motion.span 
+                        className="text-[10px] font-mono tracking-[0.2em] uppercase opacity-70 block mb-1"
+                        style={{ color: theme.accent }}
+                      >
+                        {hobby.category}
+                      </motion.span>
+                      <h4 className="text-xl font-display font-bold leading-tight drop-shadow-lg">
+                        {hobby.name}
+                      </h4>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    {hobby.completedToday ? (
-                      <button 
-                        onClick={(e) => handleOpenLog(e, hobby)}
-                        className="w-full py-2 px-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 font-medium text-xs flex items-center justify-center gap-1 hover:bg-emerald-500/15 transition-all cursor-pointer"
+                  {/* Card Action content */}
+                  <div className={`p-5 flex-1 flex flex-col justify-between transition-colors ${isDarkMode ? 'bg-black/20' : 'bg-white/40'}`}>
+                    <p className="text-xs text-gray-400 italic line-clamp-2 mb-4 leading-relaxed">
+                      "{hobby.description || 'Consistency starts with action.'}"
+                    </p>
+
+                    <div className="flex justify-between items-center mb-5 pt-1 border-t border-white/5">
+                      {/* Streak and details */}
+                      <div 
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-xl border"
+                        style={{ 
+                          backgroundColor: `${theme.primary}15`,
+                          borderColor: `${theme.primary}30`,
+                          color: theme.primary
+                        }}
                       >
-                        <CheckCircle className="w-3.5 h-3.5" /> Logged Today (Add More)
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={(e) => handleOpenLog(e, hobby)}
-                        className="w-full py-2 px-3 rounded-xl bg-purple-600 text-white font-medium text-xs flex items-center justify-center gap-1 hover:bg-purple-700 transition-all shadow-xs hover:shadow-md cursor-pointer"
-                      >
-                        <Clock className="w-3.5 h-3.5" /> Check-in & Log Today
-                      </button>
-                    )}
-                    <div className="text-center text-[10px] text-gray-400 group-hover:text-purple-400 transition-colors">
-                      Click card to open full interactive history & stats
+                        <Flame className="w-4 h-4 fill-current" />
+                        <span className="font-bold text-xs">{hobby.streak} days</span>
+                      </div>
+                      
+                      <div className="text-right text-[10px] text-gray-400 font-mono tracking-wider">
+                        DAILY: <span className="font-bold text-purple-400">{hobby.dailyGoal}h</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {hobby.completedToday ? (
+                        <button 
+                          onClick={(e) => handleOpenLog(e, hobby)}
+                          className="w-full py-2.5 px-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-bold text-xs flex items-center justify-center gap-2 hover:bg-emerald-500/20 transition-all cursor-pointer shadow-sm"
+                        >
+                          <CheckCircle className="w-4 h-4" /> Logged Today
+                        </button>
+                      ) : (
+                        <div className="flex gap-2.5">
+                          <button 
+                            onClick={(e) => handleOpenLog(e, hobby)}
+                            className="flex-1 py-2.5 px-4 rounded-xl bg-purple-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-purple-700 transition-all shadow-lg shadow-purple-500/20 cursor-pointer"
+                          >
+                            <Clock className="w-4 h-4" /> Log
+                          </button>
+                          <button 
+                            onClick={(e) => handleStartTimer(e, hobby)}
+                            className={`${index === 0 ? 'tour-focus-btn' : ''} flex-1 py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 text-gray-300 font-bold text-xs flex items-center justify-center gap-2 hover:bg-white/10 transition-all cursor-pointer`}
+                          >
+                            <Timer className="w-4 h-4 text-indigo-400" /> Focus
+                          </button>
+                        </div>
+                      )}
+                      <div className="text-center text-[9px] text-gray-500 font-mono tracking-tighter opacity-60 group-hover:opacity-100 transition-opacity">
+                        INTERACTIVE HISTORY & ANALYTICS
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -551,19 +655,6 @@ export default function DashboardView({
             )}
           </AnimatePresence>
         </div>
-      )}
-
-      {/* Developer Diagnostics & Backend Verification Suite - Restrict access exclusively to the authorized developer account */}
-      {currentUser?.email === 'sudharsanrj1971@gmail.com' && (
-        <DiagnosticsPanel
-          currentUser={currentUser}
-          userName={userName}
-          isDarkMode={isDarkMode}
-          hobbies={hobbies}
-          allAchievements={allAchievements}
-          onRefreshHobbies={onRefreshHobbies}
-          onUpdateHobby={onUpdateHobby}
-        />
       )}
 
       {/* Floating Action Button (FAB) as shown on screenshot */}
@@ -647,10 +738,60 @@ export default function DashboardView({
                     onChange={(e) => setLogNotes(e.target.value)}
                     placeholder="E.g., Finished chapter 4 of Sapiens. Practiced watercolor landscapes."
                     rows={3}
-                    className={`w-full py-2 px-3 rounded-xl border text-sm focus:outline-hidden focus:ring-2 focus:ring-purple-400 resize-none ${
+                    className={`w-full py-2 px-3 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none ${
                       isDarkMode ? 'bg-slate-900 border-purple-900 text-white' : 'bg-white border-purple-100 text-gray-700'
                     }`}
                   />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl border border-purple-500/20 bg-purple-500/5">
+                  <div>
+                    <h4 className="text-sm font-semibold">Deep Flow State</h4>
+                    <p className="text-xs text-gray-500">Did you lose track of time?</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLogFlowState(!logFlowState)}
+                    className={`w-12 h-6 rounded-full p-1 transition-colors cursor-pointer ${
+                      logFlowState ? 'bg-purple-600' : 'bg-gray-500/30'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                      logFlowState ? 'translate-x-6' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-purple-400 mb-1">
+                    Energy Impact
+                  </label>
+                  <div className="flex gap-2">
+                    {[
+                      { val: -2, emoji: '😫', label: 'Drained' },
+                      { val: -1, emoji: '🥱', label: 'Tired' },
+                      { val: 0, emoji: '😐', label: 'Neutral' },
+                      { val: 1, emoji: '🙂', label: 'Good' },
+                      { val: 2, emoji: '🤩', label: 'Energized' }
+                    ].map((energy) => (
+                      <button
+                        type="button"
+                        key={energy.val}
+                        onClick={() => setLogEnergyDelta(energy.val)}
+                        title={energy.label}
+                        className={`flex-1 py-2 flex flex-col items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                          logEnergyDelta === energy.val
+                            ? 'bg-purple-600 text-white border-transparent shadow-md'
+                            : isDarkMode
+                              ? 'bg-slate-900 text-slate-400 border-purple-900/30 hover:bg-slate-800'
+                              : 'bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="text-xl mb-1">{energy.emoji}</span>
+                        <span className="text-[9px] font-mono uppercase tracking-tighter">{energy.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <button 
@@ -660,6 +801,72 @@ export default function DashboardView({
                   Save Progress Activity
                 </button>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Focus Timer Modal */}
+      <AnimatePresence>
+        {activeTimerHobby && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className={`w-full max-w-sm rounded-[2rem] p-8 shadow-2xl border text-center flex flex-col items-center relative overflow-hidden ${
+                isDarkMode ? 'bg-[#0b0914] border-purple-900/40 text-slate-100' : 'bg-white border-purple-100 text-gray-800'
+              }`}
+            >
+              <button 
+                onClick={() => setActiveTimerHobby(null)}
+                className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 z-10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Pulsing background effect when running */}
+              {isTimerRunning && (
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.3, 0.1] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute inset-0 bg-gradient-to-tr from-purple-600 to-indigo-600 pointer-events-none rounded-[2rem]"
+                />
+              )}
+
+              <div className="relative z-10">
+                <span className="text-6xl mb-4 block drop-shadow-lg">{activeTimerHobby.emoji}</span>
+                <h3 className="text-sm font-mono tracking-widest uppercase text-purple-400 mb-1">
+                  Focus Session
+                </h3>
+                <h2 className="text-2xl font-display font-bold mb-8">
+                  {activeTimerHobby.name}
+                </h2>
+
+                <div className="font-mono text-7xl font-light tracking-tighter mb-8 tabular-nums">
+                  {formatTime(timerSeconds)}
+                </div>
+
+                <div className="flex gap-4 w-full">
+                  <button
+                    onClick={() => setIsTimerRunning(!isTimerRunning)}
+                    className={`flex-1 py-4 rounded-2xl font-bold text-lg shadow-lg transition-all cursor-pointer ${
+                      isTimerRunning 
+                        ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/20' 
+                        : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20'
+                    }`}
+                  >
+                    {isTimerRunning ? 'Pause' : 'Start Focus'}
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleCompleteTimer}
+                  className="mt-4 text-sm font-semibold text-purple-400 hover:text-purple-300 underline underline-offset-4 cursor-pointer"
+                >
+                  Finish & Log Session Early
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -713,6 +920,8 @@ export default function DashboardView({
           />
         )}
       </AnimatePresence>
+
+      {showProductTour && <ProductTour onComplete={handleTourComplete} />}
 
     </div>
   );

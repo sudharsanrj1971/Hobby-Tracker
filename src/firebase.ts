@@ -26,13 +26,13 @@ export const auth = app ? getAuth(app) : null;
 // Initialize Firestore with persistent offline caching as per PWA specifications
 let db: Firestore | null = null;
 if (app) {
-  try {
-    db = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    }, "ai-studio-hobbysync-44648ee7-6522-457a-a2e3-95d13a009dec");
-  } catch (e) {
+    try {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      }, firebaseConfig.databaseId);
+    } catch (e) {
     console.error("Failed to initialize Firestore with persistent local cache:", e);
   }
 }
